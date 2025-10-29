@@ -36,7 +36,9 @@ class TaskSerializer(serializers.ModelSerializer):
             'assigned_to_ids',
             'task_type',
             'week_number',
-            'task_order',  # ✅ Add this if you added task_order field
+            'task_order',
+            'is_scheduled',
+            'release_date',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at', 'course', 'batch', 'created_by']
     
@@ -58,6 +60,7 @@ class TaskSerializer(serializers.ModelSerializer):
         validated_data['course'] = course
         
         # Get batch if provided
+        batch = None
         if batch_id:
             batch = Batch.objects.get(id=batch_id)
             validated_data['batch'] = batch
@@ -65,26 +68,42 @@ class TaskSerializer(serializers.ModelSerializer):
         # Create task
         task = Task.objects.create(**validated_data)
         
-        # Handle task assignment based on task_type
+        # ✅ CRITICAL FIX: Handle task assignment based on task_type
         if validated_data.get('task_type') == 'course':
-            # Course-wide task: assign to all approved students in all batches of this course
-            batches = Batch.objects.filter(course=course)
+            # Course-wide task: assign to ALL approved students in ALL batches of this course
+            batches = course.batches.all()
             all_students = User.objects.filter(
                 role='student',
                 is_approved=True,
                 enrolled_batches__in=batches
             ).distinct()
             task.assigned_to.set(all_students)
+            print(f"✅ Course-wide task '{task.title}': Assigned to {all_students.count()} students")
+            print(f"   Students: {[s.username for s in all_students]}")
         else:
             # Batch-specific task
             if assigned_to_ids:
-                students = User.objects.filter(id__in=assigned_to_ids, role='student', is_approved=True)
+                # Specific students selected by admin
+                students = User.objects.filter(
+                    id__in=assigned_to_ids, 
+                    role='student', 
+                    is_approved=True
+                )
                 task.assigned_to.set(students)
-            elif batch_id:
-                # If no specific students, assign to all approved students in batch
-                batch = Batch.objects.get(id=batch_id)
+                print(f"✅ Batch task '{task.title}': Assigned to {students.count()} specific students")
+                print(f"   Students: {[s.username for s in students]}")
+            elif batch:
+                # No specific students: assign to ALL approved students in batch
                 students = batch.students.filter(is_approved=True)
                 task.assigned_to.set(students)
+                print(f"✅ Batch task '{task.title}': Assigned to {students.count()} students in batch '{batch.name}'")
+                print(f"   Students: {[s.username for s in students]}")
+            else:
+                print(f"⚠️ WARNING: Task '{task.title}' created but no students assigned!")
+        
+        # ✅ Final verification
+        final_count = task.assigned_to.count()
+        print(f"✅ TASK CREATION COMPLETE: '{task.title}' has {final_count} assigned students")
         
         return task
 
@@ -147,7 +166,8 @@ class StudentTaskSerializer(serializers.ModelSerializer):
             'created_at',
             'is_submitted',
             'submission_status',
-            'task_order',  # ✅ Add this if you added task_order field
+            'task_order',
+            'week_number',
         ]
     
     def get_is_submitted(self, obj):
