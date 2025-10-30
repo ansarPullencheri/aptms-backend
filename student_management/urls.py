@@ -26,11 +26,7 @@ urlpatterns = [
     path('api/tasks/', include('tasks.urls')),
     path('api/notifications/', include('notifications.urls')),
     
-]
-
-# Serve media files in development
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+]+static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
 
