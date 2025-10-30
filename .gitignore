@@ -1,0 +1,18 @@
+*/migrations/0
+# **/migrations
+# */migrations
+/migrations/0
+# /!init_.py
+*/_pycache_
+**/_pycache_
+***/_pycache_
+ 
+ 
+/db.sqlite3
+.env
+/.env
+/mediafiles
+/staticfiles
+/emails
+ 
+# settings.py
