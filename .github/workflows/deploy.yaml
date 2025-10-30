@@ -30,7 +30,7 @@ jobs:
           KEY: ${{ secrets.SSHKEY }}
           script: |
             cd /home/ubuntu/aptms
-            . ../venv/bin/activate
+            . ../aptmsenv/bin/activate
             
             pip install -r requirment.txt
             find . -path "/migrations/.py" -not -name "_init_.py" -delete && find . -path "/migrations/.pyc"  -delete
@@ -41,4 +41,4 @@ jobs:
             python3 manage.py crontab remove
             python3 manage.py crontab add
             
-            sudo systemctl restart alabrar.s* nginx.service
+            sudo systemctl restart aptms.s* nginx.service

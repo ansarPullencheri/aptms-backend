@@ -15,12 +15,20 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
+    def save(self, *args, **kwargs):
+        """Auto-set role to 'admin' for superusers"""
+        if self.is_superuser or self.is_staff:
+            self.role = 'admin'
+            self.is_approved = True
+        super().save(*args, **kwargs)
+    
     def __str__(self):
         return f"{self.username} - {self.role}"
     
     class Meta:
         verbose_name = 'User'
         verbose_name_plural = 'Users'
+
 
 
 class StudentProfile(models.Model):
