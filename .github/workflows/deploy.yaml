@@ -1,0 +1,44 @@
+name: Django CI CD
+ 
+on:
+  push:
+    branches: [ "production" ]
+ 
+ 
+jobs:
+  build:
+ 
+    runs-on: ubuntu-latest
+ 
+    steps:
+      - uses: actions/checkout@v1
+  
+      - name: Copy repository contents via scp
+        uses: appleboy/scp-action@master
+        with:
+          HOST: ${{ secrets.HOST }}
+          USERNAME: ${{ secrets.USERNAME }}
+          KEY: ${{ secrets.SSHKEY }}
+          source: "."
+          target: "/home/ubuntu/aptms"
+ 
+      - name: Run command on remote
+        uses: appleboy/ssh-action@master
+        with:
+          HOST: ${{ secrets.HOST }}
+          USERNAME: ${{ secrets.USERNAME }}
+          KEY: ${{ secrets.SSHKEY }}
+          script: |
+            cd /home/ubuntu/aptms
+            . ../venv/bin/activate
+            
+            pip install -r requirment.txt
+            find . -path "/migrations/.py" -not -name "_init_.py" -delete && find . -path "/migrations/.pyc"  -delete
+            find . -path "/migrations/.py" -not -name "_init_.py" -delete && find . -path "/migrations/.pyc"  -delete
+            python3 manage.py makemigrations
+            python3 manage.py migrate
+ 
+            python3 manage.py crontab remove
+            python3 manage.py crontab add
+            
+            sudo systemctl restart alabrar.s* nginx.service
