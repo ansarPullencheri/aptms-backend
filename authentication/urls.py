@@ -9,6 +9,8 @@ from .views import (
     StudentListView,
     CreateMentorView,
     UserDetailView,
+    AdminResetPasswordView,
+    AdminGeneratePasswordView,
 )
 from .student_views import (
     StudentDashboardView,
@@ -42,4 +44,6 @@ urlpatterns = [
     path('student/tasks/submit/', StudentSubmitTaskView.as_view(), name='student-submit-task'),
     path('student/submissions/', StudentSubmittedTasksView.as_view(), name='student-submissions'),
     path('student/progress/', StudentAcademicProgressView.as_view(), name='student-progress'),
+    path('admin/reset-password/', AdminResetPasswordView.as_view(), name='admin-reset-password'),
+    path('admin/generate-password/', AdminGeneratePasswordView.as_view(), name='admin-generate-password'),
 ]

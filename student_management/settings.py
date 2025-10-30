@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'courses',
     'tasks',
     'notifications',
+    'import_export',
 ]
 
 MIDDLEWARE = [

@@ -256,3 +256,98 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             {"message": f"User '{username}' deleted successfully"},
             status=status.HTTP_200_OK
         )
+
+class AdminResetPasswordView(APIView):
+    """
+    Admin can reset any user's password
+    Perfect for when students use dummy emails
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    
+    def post(self, request):
+        try:
+            user_id = request.data.get('user_id')
+            new_password = request.data.get('new_password')
+            
+            if not user_id or not new_password:
+                return Response({
+                    'error': 'user_id and new_password are required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get user
+            user = User.objects.get(id=user_id)
+            
+            # Set new password
+            user.set_password(new_password)
+            user.save()
+            
+            return Response({
+                'success': True,
+                'message': f'Password reset successful for {user.username}',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'name': f"{user.first_name} {user.last_name}"
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminGeneratePasswordView(APIView):
+    """
+    Generate a random secure password for a user
+    """
+    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    
+    def post(self, request):
+        try:
+            import random
+            import string
+            
+            user_id = request.data.get('user_id')
+            
+            if not user_id:
+                return Response({
+                    'error': 'user_id is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Get user
+            user = User.objects.get(id=user_id)
+            
+            # Generate random password (8 characters, mix of letters and numbers)
+            characters = string.ascii_letters + string.digits
+            new_password = ''.join(random.choice(characters) for i in range(8))
+            
+            # Set new password
+            user.set_password(new_password)
+            user.save()
+            
+            return Response({
+                'success': True,
+                'message': f'Password generated for {user.username}',
+                'new_password': new_password,  # Show to admin so they can share
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'name': f"{user.first_name} {user.last_name}"
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except User.DoesNotExist:
+            return Response({
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
