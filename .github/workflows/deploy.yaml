@@ -32,7 +32,7 @@ jobs:
             cd /home/ubuntu/aptms
             . ../venv/bin/activate
             
-            pip install -r requirements.txt
+            pip install -r requirments.txt
             find . -path "/migrations/.py" -not -name "_init_.py" -delete && find . -path "/migrations/.pyc"  -delete
             find . -path "/migrations/.py" -not -name "_init_.py" -delete && find . -path "/migrations/.pyc"  -delete
             python3 manage.py makemigrations
