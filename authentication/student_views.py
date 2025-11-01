@@ -2,23 +2,24 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Avg, Sum
+from django.utils import timezone
 from tasks.models import Task, TaskSubmission
 from tasks.serializers import TaskSerializer, TaskSubmissionSerializer
 from courses.models import Batch
 from .permissions import IsStudent
-from notifications.utils import notify_on_task_submission  # ✅ ADDED
 
 
 class StudentDashboardView(APIView):
     """
     Main dashboard view for students showing overview of their academic status.
+    ✅ Includes course_id for syllabus download
     """
     permission_classes = [permissions.IsAuthenticated, IsStudent]
     
     def get(self, request):
         student = request.user
         
-        # Get enrolled batches
+        # ✅ Get enrolled batches with course_id
         enrolled_batches = student.enrolled_batches.select_related('course', 'mentor')
         
         # Get task statistics
@@ -59,6 +60,7 @@ class StudentDashboardView(APIView):
                 {
                     'id': batch.id,
                     'name': batch.name,
+                    'course_id': batch.course.id,  # ✅ Added course_id for syllabus download
                     'course_name': batch.course.name,
                     'mentor_name': f"{batch.mentor.first_name} {batch.mentor.last_name}" if batch.mentor else None,
                     'start_date': batch.start_date,
@@ -105,8 +107,6 @@ class StudentTasksView(APIView):
                     {'error': 'Only students can access this endpoint'},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
-            from django.utils import timezone
             
             # Get all tasks assigned to student
             all_tasks = Task.objects.filter(
@@ -505,14 +505,20 @@ class StudentSubmitTaskView(APIView):
                 submission_file=submission_file,
             )
             
-            # ✅ SEND NOTIFICATION TO MENTOR AND ADMIN
-            print(f"\n🔔 CALLING NOTIFICATION FUNCTION")
-            print(f"   Task: {task.title}")
-            print(f"   Student: {request.user.username}")
-            
-            notify_on_task_submission(task, request.user, submission)
-            
-            print(f"🔔 NOTIFICATION FUNCTION COMPLETED\n")
+            # ✅ SEND NOTIFICATION (if notifications app exists)
+            try:
+                from notifications.utils import notify_on_task_submission
+                print(f"\n🔔 CALLING NOTIFICATION FUNCTION")
+                print(f"   Task: {task.title}")
+                print(f"   Student: {request.user.username}")
+                
+                notify_on_task_submission(task, request.user, submission)
+                
+                print(f"🔔 NOTIFICATION FUNCTION COMPLETED\n")
+            except ImportError:
+                print("⚠️ Notifications app not found, skipping notifications")
+            except Exception as e:
+                print(f"⚠️ Notification error: {str(e)}")
             
             return Response({
                 'message': 'Task submitted successfully',

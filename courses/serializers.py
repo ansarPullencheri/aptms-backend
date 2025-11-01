@@ -1,67 +1,89 @@
 from rest_framework import serializers
 from .models import Course, Batch
-from authentication.models import User
 from authentication.serializers import UserSerializer
+
 
 class CourseSerializer(serializers.ModelSerializer):
     mentor = UserSerializer(read_only=True)
-    mentor_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='mentor'),
-        source='mentor',
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
-    created_by = UserSerializer(read_only=True)
-    batch_count = serializers.SerializerMethodField()
+    mentor_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    syllabus = serializers.FileField(required=False, allow_null=True)  # ✅ Add this
     
     class Meta:
         model = Course
-        fields = ['id', 'name', 'code', 'description', 'duration_weeks', 
-                 'mentor', 'mentor_id', 'created_by', 'is_active', 
-                 'created_at', 'updated_at', 'batch_count']
-        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+        fields = [
+            'id', 'name', 'code', 'description', 'duration_weeks',
+            'syllabus', 'mentor', 'mentor_id', 'is_active',  # ✅ Include syllabus
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
     
-    def get_batch_count(self, obj):
-        return obj.batches.count()
+    def create(self, validated_data):
+        mentor_id = validated_data.pop('mentor_id', None)
+        course = Course.objects.create(**validated_data)
+        
+        if mentor_id:
+            from authentication.models import User
+            try:
+                mentor = User.objects.get(id=mentor_id, role='mentor')
+                course.mentor = mentor
+                course.save()
+            except User.DoesNotExist:
+                pass
+        
+        return course
+    
+    def update(self, instance, validated_data):
+        mentor_id = validated_data.pop('mentor_id', None)
+        
+        # Update all fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        if mentor_id is not None:
+            from authentication.models import User
+            try:
+                mentor = User.objects.get(id=mentor_id, role='mentor')
+                instance.mentor = mentor
+            except User.DoesNotExist:
+                pass
+        
+        instance.save()
+        return instance
+
 
 class BatchSerializer(serializers.ModelSerializer):
     course = CourseSerializer(read_only=True)
-    course_id = serializers.PrimaryKeyRelatedField(
-        queryset=Course.objects.all(),
-        source='course',
-        write_only=True
-    )
+    course_id = serializers.IntegerField(write_only=True)
     mentor = UserSerializer(read_only=True)
-    mentor_id = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='mentor'),
-        source='mentor',
-        write_only=True,
-        required=False,
-        allow_null=True
-    )
-    student_ids = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(role='student'),
-        source='students',
-        write_only=True,
-        many=True,
-        required=False
-    )
+    mentor_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     student_count = serializers.SerializerMethodField()
     
     class Meta:
         model = Batch
-        fields = ['id', 'name', 'course', 'course_id', 'start_date', 'end_date',
-                 'mentor', 'mentor_id', 'student_ids', 'max_students',
-                 'is_active', 'created_at', 'student_count']
+        fields = [
+            'id', 'name', 'course', 'course_id', 'start_date', 'end_date',
+            'mentor', 'mentor_id', 'max_students', 'student_count',
+            'is_active', 'created_at'
+        ]
         read_only_fields = ['id', 'created_at']
     
     def get_student_count(self, obj):
-        return obj.students.count()
+        return obj.students.filter(is_approved=True).count()
 
-class BatchDetailSerializer(BatchSerializer):
-    """Extended serializer with full student details"""
+
+class BatchDetailSerializer(serializers.ModelSerializer):
+    course = CourseSerializer(read_only=True)
+    mentor = UserSerializer(read_only=True)
     students = UserSerializer(many=True, read_only=True)
+    student_count = serializers.SerializerMethodField()
     
-    class Meta(BatchSerializer.Meta):
-        fields = BatchSerializer.Meta.fields + ['students']
+    class Meta:
+        model = Batch
+        fields = [
+            'id', 'name', 'course', 'start_date', 'end_date',
+            'mentor', 'students', 'student_count', 'max_students',
+            'is_active', 'created_at'
+        ]
+    
+    def get_student_count(self, obj):
+        return obj.students.filter(is_approved=True).count()

@@ -1,6 +1,7 @@
 from rest_framework import generics, status, permissions, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from .models import User, StudentProfile, MentorProfile
@@ -109,13 +110,11 @@ class ApproveStudentView(APIView):
             
             batch_ids = request.data.get('batch_ids', [])
             
-            # Approve the student
             student.is_approved = True
             student.save()
             
             print(f"Student {student.username} approved: {student.is_approved}")
             
-            # Assign to batches
             assigned_count = 0
             if batch_ids:
                 from courses.models import Batch
@@ -257,6 +256,7 @@ class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
             status=status.HTTP_200_OK
         )
 
+
 class AdminResetPasswordView(APIView):
     """
     Admin can reset any user's password
@@ -274,10 +274,8 @@ class AdminResetPasswordView(APIView):
                     'error': 'user_id and new_password are required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Get user
             user = User.objects.get(id=user_id)
             
-            # Set new password
             user.set_password(new_password)
             user.save()
             
@@ -320,21 +318,18 @@ class AdminGeneratePasswordView(APIView):
                     'error': 'user_id is required'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Get user
             user = User.objects.get(id=user_id)
             
-            # Generate random password (8 characters, mix of letters and numbers)
             characters = string.ascii_letters + string.digits
             new_password = ''.join(random.choice(characters) for i in range(8))
             
-            # Set new password
             user.set_password(new_password)
             user.save()
             
             return Response({
                 'success': True,
                 'message': f'Password generated for {user.username}',
-                'new_password': new_password,  # Show to admin so they can share
+                'new_password': new_password,
                 'user': {
                     'id': user.id,
                     'username': user.username,
@@ -351,3 +346,88 @@ class AdminGeneratePasswordView(APIView):
             return Response({
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ✅ Student Dashboard View
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def student_dashboard(request):
+    """
+    Get student dashboard data with all relevant information
+    """
+    try:
+        student = request.user
+        
+        if student.role != 'student':
+            return Response({
+                'error': 'Only students can access this endpoint'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Get enrolled batches with course_id
+        enrolled_batches = []
+        for batch in student.enrolled_batches.all():
+            enrolled_batches.append({
+                'id': batch.id,
+                'name': batch.name,
+                'course_id': batch.course.id,  # ✅ Include course_id
+                'course_name': batch.course.name,
+                'mentor_name': f"{batch.mentor.first_name} {batch.mentor.last_name}" if batch.mentor else None,
+            })
+        
+        # Get task statistics
+        from tasks.models import Task, TaskSubmission
+        
+        assigned_tasks = Task.objects.filter(assigned_to=student)
+        submitted_tasks = TaskSubmission.objects.filter(student=student)
+        
+        task_statistics = {
+            'total_assigned': assigned_tasks.count(),
+            'total_submitted': submitted_tasks.count(),
+            'pending_tasks': assigned_tasks.count() - submitted_tasks.count(),
+        }
+        
+        # Get recent submissions
+        recent_submissions = []
+        for submission in submitted_tasks.order_by('-submitted_at')[:5]:
+            recent_submissions.append({
+                'task_title': submission.task.title,
+                'submitted_at': submission.submitted_at,
+                'is_graded': submission.marks_obtained is not None,
+                'marks_obtained': submission.marks_obtained,
+                'max_marks': submission.task.max_marks,
+            })
+        
+        # Calculate academic progress
+        graded_submissions = submitted_tasks.filter(marks_obtained__isnull=False)
+        if graded_submissions.exists():
+            total_marks = sum(s.task.max_marks for s in graded_submissions)
+            obtained_marks = sum(s.marks_obtained for s in graded_submissions)
+            overall_percentage = round((obtained_marks / total_marks * 100), 2) if total_marks > 0 else 0
+        else:
+            overall_percentage = 0
+        
+        academic_progress = {
+            'overall_percentage': overall_percentage,
+        }
+        
+        # Student info
+        student_info = {
+            'name': f"{student.first_name} {student.last_name}",
+            'username': student.username,
+            'email': student.email,
+        }
+        
+        return Response({
+            'student_info': student_info,
+            'enrolled_batches': enrolled_batches,
+            'task_statistics': task_statistics,
+            'recent_submissions': recent_submissions,
+            'academic_progress': academic_progress,
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
