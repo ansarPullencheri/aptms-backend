@@ -1,12 +1,18 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.parsers import MultiPartParser, FormParser  # ✅ Add these
 from django.db.models import Q, Prefetch
 from .models import Course, Batch
 from .serializers import CourseSerializer, BatchSerializer, BatchDetailSerializer
 from authentication.models import User
 from authentication.permissions import IsAdmin, IsMentor, IsAdminOrMentor
 from tasks.models import Task, TaskSubmission
+from django.http import FileResponse, Http404
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+import os
+
 
 # Course Views
 class CourseListView(generics.ListAPIView):
@@ -14,30 +20,36 @@ class CourseListView(generics.ListAPIView):
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class CourseDetailView(generics.RetrieveAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class CourseCreateView(generics.CreateAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)  # ✅ Add this for file upload
     
     def perform_create(self, serializer):
         if self.request.user.role != 'admin':
             raise permissions.PermissionDenied("Only admins can create courses")
         serializer.save(created_by=self.request.user)
 
+
 class CourseUpdateView(generics.UpdateAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)  # ✅ Add this for file upload
     
     def perform_update(self, serializer):
         if self.request.user.role != 'admin':
             raise permissions.PermissionDenied("Only admins can update courses")
         serializer.save()
+
 
 class CourseDeleteView(generics.DestroyAPIView):
     queryset = Course.objects.all()
@@ -47,7 +59,14 @@ class CourseDeleteView(generics.DestroyAPIView):
     def perform_destroy(self, instance):
         if self.request.user.role != 'admin':
             raise permissions.PermissionDenied("Only admins can delete courses")
+        
+        # ✅ Delete syllabus file if exists
+        if instance.syllabus:
+            if os.path.isfile(instance.syllabus.path):
+                os.remove(instance.syllabus.path)
+        
         instance.delete()
+
 
 class AssignMentorView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -87,16 +106,59 @@ class AssignMentorView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
+# ✅ Download Syllabus View
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def download_syllabus(request, pk):
+    """
+    Download syllabus PDF for a course
+    """
+    try:
+        course = Course.objects.get(id=pk)
+        
+        # Check if syllabus file exists
+        if not course.syllabus:
+            return Response({
+                'error': 'Syllabus not available for this course'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get the file path
+        file_path = course.syllabus.path
+        
+        if not os.path.exists(file_path):
+            return Response({
+                'error': 'Syllabus file not found on server'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Serve the file
+        response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{course.name}_Syllabus.pdf"'
+        
+        return response
+        
+    except Course.DoesNotExist:
+        return Response({
+            'error': 'Course not found'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # Batch Views
 class BatchListView(generics.ListAPIView):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+
 class BatchDetailView(generics.RetrieveAPIView):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
     permission_classes = [permissions.IsAuthenticated]
+
 
 class BatchCreateView(generics.CreateAPIView):
     queryset = Batch.objects.all()
@@ -108,6 +170,7 @@ class BatchCreateView(generics.CreateAPIView):
             raise permissions.PermissionDenied("Only admins can create batches")
         serializer.save()
 
+
 class BatchUpdateView(generics.UpdateAPIView):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
@@ -118,6 +181,7 @@ class BatchUpdateView(generics.UpdateAPIView):
             raise permissions.PermissionDenied("Only admins can update batches")
         serializer.save()
 
+
 class BatchDeleteView(generics.DestroyAPIView):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
@@ -127,6 +191,7 @@ class BatchDeleteView(generics.DestroyAPIView):
         if self.request.user.role != 'admin':
             raise permissions.PermissionDenied("Only admins can delete batches")
         instance.delete()
+
 
 class AddStudentsToBatchView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -161,11 +226,9 @@ class AddStudentsToBatchView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
 # Mentor-Specific Views
 class MentorAssignedBatchesView(generics.ListAPIView):
-    """
-    View for mentors to see their assigned batches.
-    """
     serializer_class = BatchDetailSerializer
     permission_classes = [permissions.IsAuthenticated, IsMentor]
     
@@ -178,10 +241,8 @@ class MentorAssignedBatchesView(generics.ListAPIView):
             'course'
         ).order_by('-created_at')
 
+
 class MentorBatchDetailView(generics.RetrieveAPIView):
-    """
-    View for mentors to see detailed information about a specific batch.
-    """
     serializer_class = BatchDetailSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminOrMentor]
     
@@ -190,10 +251,8 @@ class MentorBatchDetailView(generics.RetrieveAPIView):
             return Batch.objects.all()
         return Batch.objects.filter(mentor=self.request.user)
 
+
 class BatchStudentsView(APIView):
-    """
-    View to get all students in a specific batch with their details.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAdminOrMentor]
     
     def get(self, request, batch_id):
@@ -203,7 +262,6 @@ class BatchStudentsView(APIView):
             else:
                 batch = Batch.objects.get(id=batch_id, mentor=request.user)
             
-            # ✅ Get ALL students (don't filter by is_approved here)
             students = batch.students.all().select_related('student_profile')
             
             students_data = []
@@ -215,11 +273,10 @@ class BatchStudentsView(APIView):
                     'first_name': student.first_name,
                     'last_name': student.last_name,
                     'phone': student.phone,
-                    'is_approved': student.is_approved,  # ✅ ADD THIS LINE
+                    'is_approved': student.is_approved,
                     'profile_picture': request.build_absolute_uri(student.profile_picture.url) if student.profile_picture else None,
                 }
                 
-                # Add student profile info if exists
                 if hasattr(student, 'student_profile'):
                     student_info.update({
                         'enrollment_number': student.student_profile.enrollment_number,
@@ -227,7 +284,6 @@ class BatchStudentsView(APIView):
                         'address': student.student_profile.address,
                     })
                 
-                # Add task statistics
                 assigned_tasks = Task.objects.filter(
                     batch=batch,
                     assigned_to=student
@@ -261,9 +317,6 @@ class BatchStudentsView(APIView):
 
 
 class StudentDetailView(APIView):
-    """
-    View for mentors/admins to see individual student details.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAdminOrMentor]
     
     def get(self, request, student_id):
@@ -274,7 +327,6 @@ class StudentDetailView(APIView):
                 is_approved=True
             )
             
-            # Check if mentor has access to this student
             if request.user.role == 'mentor':
                 has_access = Batch.objects.filter(
                     mentor=request.user,
@@ -287,10 +339,7 @@ class StudentDetailView(APIView):
                         status=status.HTTP_403_FORBIDDEN
                     )
             
-            # Get enrolled batches
             enrolled_batches = student.enrolled_batches.select_related('course', 'mentor')
-            
-            # Get task statistics
             assigned_tasks = Task.objects.filter(assigned_to=student)
             submissions = TaskSubmission.objects.filter(student=student)
             
@@ -338,17 +387,14 @@ class StudentDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
 class StudentSubmissionsView(APIView):
-    """
-    View for mentors to see all submissions of a specific student in their batches
-    """
     permission_classes = [permissions.IsAuthenticated, IsAdminOrMentor]
     
     def get(self, request, student_id):
         try:
             student = User.objects.get(id=student_id, role='student')
             
-            # Check if mentor has access to this student
             if request.user.role == 'mentor':
                 has_access = Batch.objects.filter(
                     mentor=request.user,
@@ -361,8 +407,6 @@ class StudentSubmissionsView(APIView):
                         status=status.HTTP_403_FORBIDDEN
                     )
             
-            # Get all submissions by this student
-            from tasks.models import TaskSubmission
             submissions = TaskSubmission.objects.filter(
                 student=student
             ).select_related('task', 'task__course').order_by('-submitted_at')
@@ -400,20 +444,15 @@ class StudentSubmissionsView(APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+
 class StudentBatchesView(APIView):
-    """
-    View to get all batches a specific student is enrolled in.
-    """
     permission_classes = [permissions.IsAuthenticated]
     
     def get(self, request, student_id):
         try:
-            # Get the student
             student = User.objects.get(id=student_id, role='student')
             
-            # Check permissions - admin can see all, others only if they have access
             if request.user.role == 'mentor':
-                # Mentor can only see their own students
                 has_access = Batch.objects.filter(
                     mentor=request.user,
                     students=student
@@ -425,14 +464,12 @@ class StudentBatchesView(APIView):
                         status=status.HTTP_403_FORBIDDEN
                     )
             elif request.user.role not in ['admin', 'mentor']:
-                # Students can only see their own data
                 if request.user.id != student_id:
                     return Response(
                         {'error': 'You do not have permission to view this data'},
                         status=status.HTTP_403_FORBIDDEN
                     )
             
-            # Get all batches where this student is enrolled
             enrolled_batches = Batch.objects.filter(
                 students=student
             ).select_related('course', 'mentor').prefetch_related('students')
@@ -453,12 +490,11 @@ class StudentBatchesView(APIView):
                         'email': batch.mentor.email,
                     } if batch.mentor else None,
                     'student_count': batch.students.filter(is_approved=True).count(),
-                    'start_date': batch.start_date if hasattr(batch, 'start_date') else None,
-                    'end_date': batch.end_date if hasattr(batch, 'end_date') else None,
+                    'start_date': batch.start_date,
+                    'end_date': batch.end_date,
                 }
                 batches_data.append(batch_info)
             
-            # Get task statistics for this student
             total_tasks = Task.objects.filter(assigned_to=student).count()
             total_submissions = TaskSubmission.objects.filter(student=student).count()
             

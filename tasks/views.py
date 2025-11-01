@@ -2,6 +2,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q, Count, Prefetch
+from django.utils import timezone
 from .models import Task, TaskSubmission
 from .serializers import (
     TaskSerializer, 
@@ -14,14 +15,22 @@ from authentication.models import User
 from authentication.permissions import IsAdmin, IsMentor, IsStudent, IsAdminOrMentor
 
 # Import notification utilities
-from notifications.utils import (
-    notify_on_task_submission,
-    notify_on_task_graded,
-    notify_on_task_created
-)
+try:
+    from notifications.utils import (
+        notify_on_task_submission,
+        notify_on_task_graded,
+        notify_on_task_created
+    )
+except ImportError:
+    def notify_on_task_submission(*args, **kwargs):
+        pass
+    def notify_on_task_graded(*args, **kwargs):
+        pass
+    def notify_on_task_created(*args, **kwargs):
+        pass
 
 
-# Task Views
+# ===== Task Views =====
 class TaskListView(generics.ListAPIView):
     serializer_class = TaskSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -183,7 +192,7 @@ class AssignedTasksView(generics.ListAPIView):
         return context
 
 
-# Submission Views
+# ===== Submission Views =====
 class TaskSubmissionView(generics.CreateAPIView):
     serializer_class = TaskSubmissionSerializer
     permission_classes = [permissions.IsAuthenticated, IsStudent]
@@ -254,7 +263,7 @@ class GradeSubmissionView(generics.UpdateAPIView):
         notify_on_task_graded(submission, self.request.user)
 
 
-# Mentor-Specific Task Views
+# ===== Mentor-Specific Task Views =====
 class MentorBatchTasksView(generics.ListAPIView):
     """View for mentors to see all tasks for their assigned batches."""
     serializer_class = TaskSerializer
@@ -377,6 +386,305 @@ class BatchTaskSubmissionsView(APIView):
             )
 
 
+# ===== Mentor Submission Views (NEW) =====
+class MentorPendingSubmissionsView(APIView):
+    """
+    View for mentors to see all pending submissions (not yet graded) 
+    from students in their batches
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request):
+        try:
+            mentor = request.user
+            
+            # Get all batches this mentor is teaching
+            mentor_batches = Batch.objects.filter(mentor=mentor)
+            
+            # Get all tasks from these batches
+            mentor_tasks = Task.objects.filter(batch__in=mentor_batches)
+            
+            # Get pending submissions (not graded yet)
+            pending_submissions = TaskSubmission.objects.filter(
+                task__in=mentor_tasks,
+                marks_obtained__isnull=True
+            ).select_related('task', 'student', 'task__batch', 'task__course').order_by('-submitted_at')
+            
+            submissions_data = []
+            for submission in pending_submissions:
+                submissions_data.append({
+                    'id': submission.id,
+                    'student': {
+                        'id': submission.student.id,
+                        'name': f"{submission.student.first_name} {submission.student.last_name}",
+                        'username': submission.student.username,
+                        'email': submission.student.email,
+                    },
+                    'task': {
+                        'id': submission.task.id,
+                        'title': submission.task.title,
+                        'description': submission.task.description,
+                        'max_marks': submission.task.max_marks,
+                        'due_date': submission.task.due_date,
+                        'course': {
+                            'id': submission.task.course.id,
+                            'name': submission.task.course.name,
+                        },
+                        'batch': {
+                            'id': submission.task.batch.id,
+                            'name': submission.task.batch.name,
+                        } if submission.task.batch else None,
+                    },
+                    'submission_text': submission.submission_text,
+                    'submission_file': request.build_absolute_uri(submission.submission_file.url) if submission.submission_file else None,
+                    'submitted_at': submission.submitted_at,
+                    'status': submission.status,
+                })
+            
+            return Response({
+                'pending_submissions': submissions_data,
+                'total_pending': len(submissions_data),
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MentorSubmissionDetailView(APIView):
+    """
+    View for mentor to see detailed submission including file and text
+    ✅ FIXED - This is the key view for viewing submission details
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request, submission_id):
+        try:
+            print(f"\n📍 MentorSubmissionDetailView - Getting submission {submission_id}")
+            print(f"📍 Request user: {request.user.username}, role: {request.user.role}")
+            
+            mentor = request.user
+            
+            # Get submission
+            submission = TaskSubmission.objects.select_related(
+                'task', 'student', 'task__batch', 'task__course'
+            ).get(id=submission_id)
+            
+            print(f"✅ Submission found: {submission.id}")
+            print(f"✅ Submission text: {submission.submission_text[:50] if submission.submission_text else 'NONE'}")
+            print(f"✅ Submission file: {submission.submission_file}")
+            
+            # Verify mentor has access to this task
+            if submission.task.batch:
+                print(f"📋 Batch task - checking mentor access")
+                if submission.task.batch.mentor != mentor:
+                    print(f"❌ Mentor {mentor.id} doesn't match batch mentor {submission.task.batch.mentor.id}")
+                    return Response({
+                        'error': 'You do not have access to this submission'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            else:
+                print(f"📋 Course-wide task - checking mentor courses")
+                has_access = Batch.objects.filter(
+                    mentor=mentor,
+                    course=submission.task.course
+                ).exists()
+                
+                if not has_access:
+                    print(f"❌ Mentor has no batches in this course")
+                    return Response({
+                        'error': 'You do not have access to this submission'
+                    }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Build response
+            submission_data = {
+                'id': submission.id,
+                'student': {
+                    'id': submission.student.id,
+                    'name': f"{submission.student.first_name} {submission.student.last_name}",
+                    'username': submission.student.username,
+                    'email': submission.student.email,
+                    'phone': submission.student.phone if hasattr(submission.student, 'phone') else '',
+                },
+                'task': {
+                    'id': submission.task.id,
+                    'title': submission.task.title,
+                    'description': submission.task.description,
+                    'max_marks': submission.task.max_marks,
+                    'due_date': submission.task.due_date,
+                    'course': {
+                        'id': submission.task.course.id,
+                        'name': submission.task.course.name,
+                    },
+                    'batch': {
+                        'id': submission.task.batch.id,
+                        'name': submission.task.batch.name,
+                    } if submission.task.batch else None,
+                },
+                'submission_text': submission.submission_text or '',
+                'submission_file': request.build_absolute_uri(submission.submission_file.url) if submission.submission_file else None,
+                'submitted_at': submission.submitted_at,
+                'status': submission.status,
+                'marks_obtained': submission.marks_obtained,
+                'feedback': submission.feedback or '',
+                'is_graded': submission.marks_obtained is not None,
+            }
+            
+            print(f"✅ Response ready: {submission_data}")
+            return Response(submission_data, status=status.HTTP_200_OK)
+            
+        except TaskSubmission.DoesNotExist:
+            print(f"❌ Submission {submission_id} not found")
+            return Response({
+                'error': f'Submission {submission_id} not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import traceback
+            error_msg = traceback.format_exc()
+            print(f"❌ Exception: {error_msg}")
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MentorGradeSubmissionView(APIView):
+    """
+    View for mentor to grade a submission
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def post(self, request, submission_id):
+        try:
+            mentor = request.user
+            
+            # Get submission
+            submission = TaskSubmission.objects.select_related(
+                'task', 'student', 'task__batch'
+            ).get(id=submission_id)
+            
+            # Verify mentor has access
+            if submission.task.batch and submission.task.batch.mentor != mentor:
+                return Response({
+                    'error': 'You do not have access to this submission'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Get data
+            marks_obtained = request.data.get('marks_obtained')
+            feedback = request.data.get('feedback', '')
+            
+            if marks_obtained is None:
+                return Response({
+                    'error': 'marks_obtained is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate marks
+            try:
+                marks_obtained = float(marks_obtained)
+            except (TypeError, ValueError):
+                return Response({
+                    'error': 'marks_obtained must be a number'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if marks_obtained < 0 or marks_obtained > submission.task.max_marks:
+                return Response({
+                    'error': f'Marks must be between 0 and {submission.task.max_marks}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Update submission
+            submission.marks_obtained = marks_obtained
+            submission.feedback = feedback
+            submission.graded_by = mentor
+            submission.status = 'graded'
+            submission.save()
+            
+            # ✅ Send notification to student
+            notify_on_task_graded(submission, mentor)
+            
+            return Response({
+                'message': 'Submission graded successfully',
+                'submission': {
+                    'id': submission.id,
+                    'student_name': f"{submission.student.first_name} {submission.student.last_name}",
+                    'task_title': submission.task.title,
+                    'marks_obtained': submission.marks_obtained,
+                    'feedback': submission.feedback,
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except TaskSubmission.DoesNotExist:
+            return Response({
+                'error': 'Submission not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class MentorGradedSubmissionsView(APIView):
+    """
+    View for mentor to see all graded submissions
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request):
+        try:
+            mentor = request.user
+            
+            # Get all batches this mentor is teaching
+            mentor_batches = Batch.objects.filter(mentor=mentor)
+            
+            # Get all tasks from these batches
+            mentor_tasks = Task.objects.filter(batch__in=mentor_batches)
+            
+            # Get graded submissions
+            graded_submissions = TaskSubmission.objects.filter(
+                task__in=mentor_tasks,
+                marks_obtained__isnull=False
+            ).select_related('task', 'student', 'task__batch', 'task__course').order_by('-submitted_at')
+            
+            submissions_data = []
+            for submission in graded_submissions:
+                percentage = (submission.marks_obtained / submission.task.max_marks * 100) if submission.task.max_marks > 0 else 0
+                submissions_data.append({
+                    'id': submission.id,
+                    'student': {
+                        'id': submission.student.id,
+                        'name': f"{submission.student.first_name} {submission.student.last_name}",
+                        'username': submission.student.username,
+                    },
+                    'task': {
+                        'id': submission.task.id,
+                        'title': submission.task.title,
+                        'max_marks': submission.task.max_marks,
+                        'course': {
+                            'id': submission.task.course.id,
+                            'name': submission.task.course.name,
+                        },
+                    },
+                    'marks_obtained': submission.marks_obtained,
+                    'percentage': round(percentage, 2),
+                    'submitted_at': submission.submitted_at,
+                    'graded_by': f"{submission.graded_by.first_name} {submission.graded_by.last_name}" if submission.graded_by else 'Unknown',
+                })
+            
+            return Response({
+                'graded_submissions': submissions_data,
+                'total_graded': len(submissions_data),
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
 class MentorCreateTaskView(APIView):
     """Mentors can create tasks for their assigned batches"""
     permission_classes = [permissions.IsAuthenticated, IsMentor]
@@ -396,7 +704,7 @@ class MentorCreateTaskView(APIView):
                 title=request.data.get('title'),
                 description=request.data.get('description'),
                 due_date=request.data.get('due_date'),
-                max_marks=request.data.get('max_marks'),
+                max_marks=request.data.get('max_marks', 100),
                 created_by=request.user
             )
             
@@ -511,6 +819,7 @@ class MentorTasksListView(APIView):
             )
 
 
+# ===== Student Views =====
 class StudentSubmitTaskView(APIView):
     """View for students to submit tasks"""
     permission_classes = [permissions.IsAuthenticated]
