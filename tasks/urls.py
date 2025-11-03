@@ -25,9 +25,9 @@ urlpatterns = [
     path('mentor/tasks/', views.MentorTasksListView.as_view(), name='mentor-tasks-list'),
     path('mentor/batch/<int:batch_id>/tasks/', views.MentorBatchTasksView.as_view(), name='mentor-batch-tasks'),
     
-    # ===== Mentor Submission Views (KEY URLS) =====
+    # ===== Mentor Submission Views =====
     path('mentor/submissions/pending/', views.MentorPendingSubmissionsView.as_view(), name='mentor-pending-submissions'),
-    path('mentor/submissions/<int:submission_id>/', views.MentorSubmissionDetailView.as_view(), name='mentor-submission-detail'),  # ✅ KEY URL
+    path('mentor/submissions/<int:submission_id>/', views.MentorSubmissionDetailView.as_view(), name='mentor-submission-detail'),
     path('mentor/submissions/<int:submission_id>/grade/', views.MentorGradeSubmissionView.as_view(), name='mentor-grade-submission'),
     path('mentor/submissions/graded/', views.MentorGradedSubmissionsView.as_view(), name='mentor-graded-submissions'),
     
@@ -37,4 +37,22 @@ urlpatterns = [
     # ===== Student View for Mentors =====
     path('student/<int:student_id>/submitted/', views.StudentSubmittedTasksView.as_view(), name='student-submitted-tasks'),
     path('student/<int:student_id>/assigned/', views.StudentAssignedTasksView.as_view(), name='student-assigned-tasks'),
+    
+    # ===== Weekly Progress Review URLs ===== ✅ CORRECTED
+    # GET: Load existing review | POST: Save review (same endpoint)
+    path('mentor/weekly-review/<int:batch_id>/<int:student_id>/<int:week_number>/', 
+         views.MentorWeeklyReviewView.as_view(), 
+         name='mentor-weekly-review'),
+    
+    # Get students in batch for weekly review dropdown
+    path('mentor/batch/<int:batch_id>/students/', 
+         views.BatchStudentsWeeklyListView.as_view(), 
+         name='batch-students-weekly'),
+    path('student/weekly-review/<int:week_number>/', 
+     views.StudentWeeklyReviewView.as_view(), 
+     name='student-weekly-review'),
+    path('mentor/all-reviews/', 
+     views.MentorAllReviewsView.as_view(), 
+     name='mentor-all-reviews'), 
+     
 ]

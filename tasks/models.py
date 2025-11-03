@@ -81,3 +81,28 @@ class TaskSubmission(models.Model):
         else:
             self.status = 'submitted'
         super().save(*args, **kwargs)
+
+class StudentProgressReview(models.Model):
+    """
+    Weekly progress review for each student
+    Mentor can add feedback (internal and public)
+    """
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='progress_reviews')
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='progress_reviews')
+    week_number = models.IntegerField(help_text="Week number (1, 2, 3, etc.)")
+    
+    # Feedback
+    mentor_feedback = models.TextField(blank=True, null=True, help_text="Only visible to mentor and admin")
+    student_feedback = models.TextField(blank=True, null=True, help_text="Visible to student")
+    
+    # Metadata
+    reviewed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='given_progress_reviews')
+    reviewed_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"{self.student.username} - Week {self.week_number} - {self.batch.name}"
+    
+    class Meta:
+        unique_together = ['batch', 'student', 'week_number']
+        ordering = ['-week_number', 'student__first_name']

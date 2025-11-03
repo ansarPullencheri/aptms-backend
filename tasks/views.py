@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q, Count, Prefetch
 from django.utils import timezone
-from .models import Task, TaskSubmission
+from .models import Task, TaskSubmission, StudentProgressReview  # ✅ ADD StudentProgressReview
 from .serializers import (
     TaskSerializer, 
     TaskSubmissionSerializer, 
@@ -457,43 +457,30 @@ class MentorPendingSubmissionsView(APIView):
 class MentorSubmissionDetailView(APIView):
     """
     View for mentor to see detailed submission including file and text
-    ✅ FIXED - This is the key view for viewing submission details
     """
     permission_classes = [permissions.IsAuthenticated, IsMentor]
     
     def get(self, request, submission_id):
         try:
-            print(f"\n📍 MentorSubmissionDetailView - Getting submission {submission_id}")
-            print(f"📍 Request user: {request.user.username}, role: {request.user.role}")
-            
             mentor = request.user
             
-            # Get submission
             submission = TaskSubmission.objects.select_related(
                 'task', 'student', 'task__batch', 'task__course'
             ).get(id=submission_id)
             
-            print(f"✅ Submission found: {submission.id}")
-            print(f"✅ Submission text: {submission.submission_text[:50] if submission.submission_text else 'NONE'}")
-            print(f"✅ Submission file: {submission.submission_file}")
-            
-            # Verify mentor has access to this task
+            # Verify mentor has access
             if submission.task.batch:
-                print(f"📋 Batch task - checking mentor access")
                 if submission.task.batch.mentor != mentor:
-                    print(f"❌ Mentor {mentor.id} doesn't match batch mentor {submission.task.batch.mentor.id}")
                     return Response({
                         'error': 'You do not have access to this submission'
                     }, status=status.HTTP_403_FORBIDDEN)
             else:
-                print(f"📋 Course-wide task - checking mentor courses")
                 has_access = Batch.objects.filter(
                     mentor=mentor,
                     course=submission.task.course
                 ).exists()
                 
                 if not has_access:
-                    print(f"❌ Mentor has no batches in this course")
                     return Response({
                         'error': 'You do not have access to this submission'
                     }, status=status.HTTP_403_FORBIDDEN)
@@ -506,7 +493,7 @@ class MentorSubmissionDetailView(APIView):
                     'name': f"{submission.student.first_name} {submission.student.last_name}",
                     'username': submission.student.username,
                     'email': submission.student.email,
-                    'phone': submission.student.phone if hasattr(submission.student, 'phone') else '',
+                    'phone': getattr(submission.student, 'phone', ''),
                 },
                 'task': {
                     'id': submission.task.id,
@@ -532,18 +519,15 @@ class MentorSubmissionDetailView(APIView):
                 'is_graded': submission.marks_obtained is not None,
             }
             
-            print(f"✅ Response ready: {submission_data}")
             return Response(submission_data, status=status.HTTP_200_OK)
             
         except TaskSubmission.DoesNotExist:
-            print(f"❌ Submission {submission_id} not found")
             return Response({
-                'error': f'Submission {submission_id} not found'
+                'error': f'Submission not found'
             }, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             import traceback
-            error_msg = traceback.format_exc()
-            print(f"❌ Exception: {error_msg}")
+            print(traceback.format_exc())
             return Response({
                 'error': str(e)
             }, status=status.HTTP_400_BAD_REQUEST)
@@ -979,3 +963,295 @@ class StudentTaskDetailView(APIView):
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+# ===== Weekly Progress Review Views =====
+class MentorWeeklyReviewView(APIView):
+    """
+    GET: Fetch existing weekly review for a student
+    POST: Save weekly review for a student
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request, batch_id, student_id, week_number):
+        try:
+            mentor = request.user
+            batch_id = int(batch_id)
+            student_id = int(student_id)
+            week_number = int(week_number)
+            
+            # Verify mentor access to batch
+            batch = Batch.objects.get(id=batch_id, mentor=mentor)
+            
+            # Verify student is in batch
+            if not batch.students.filter(id=student_id).exists():
+                return Response({
+                    'error': 'Student not in this batch'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Get or create progress review
+            progress_review, created = StudentProgressReview.objects.get_or_create(
+                batch_id=batch_id,
+                student_id=student_id,
+                week_number=week_number
+            )
+            
+            review_data = {
+                'id': progress_review.id,
+                'batch': {
+                    'id': batch.id,
+                    'name': batch.name,
+                },
+                'student': {
+                    'id': progress_review.student.id,
+                    'name': f"{progress_review.student.first_name} {progress_review.student.last_name}",
+                    'username': progress_review.student.username,
+                    'email': progress_review.student.email,
+                },
+                'week_number': week_number,
+                'mentor_feedback': progress_review.mentor_feedback or '',
+                'student_feedback': progress_review.student_feedback or '',
+                'reviewed_at': progress_review.reviewed_at,
+                'reviewed_by': {
+                    'name': f"{progress_review.reviewed_by.first_name} {progress_review.reviewed_by.last_name}",
+                    'username': progress_review.reviewed_by.username,
+                } if progress_review.reviewed_by else None,
+            }
+            
+            return Response(review_data, status=status.HTTP_200_OK)
+            
+        except Batch.DoesNotExist:
+            return Response({
+                'error': 'Batch not found or you do not have access'
+            }, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+    
+    def post(self, request, batch_id, student_id, week_number):
+        try:
+            mentor = request.user
+            batch_id = int(batch_id)
+            student_id = int(student_id)
+            week_number = int(week_number)
+            
+            # Verify mentor access
+            batch = Batch.objects.get(id=batch_id, mentor=mentor)
+            
+            # Verify student is in batch
+            if not batch.students.filter(id=student_id).exists():
+                return Response({
+                    'error': 'Student not in this batch'
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            # Get data from request
+            mentor_feedback = request.data.get('mentor_feedback', '')
+            student_feedback = request.data.get('student_feedback', '')
+            
+            # Get or create progress review
+            progress_review, created = StudentProgressReview.objects.get_or_create(
+                batch_id=batch_id,
+                student_id=student_id,
+                week_number=week_number
+            )
+            
+            # Update feedback
+            progress_review.mentor_feedback = mentor_feedback if mentor_feedback else None
+            progress_review.student_feedback = student_feedback if student_feedback else None
+            progress_review.reviewed_by = mentor
+            progress_review.save()
+            
+            return Response({
+                'message': 'Progress review saved successfully',
+                'review_id': progress_review.id,
+                'week_number': week_number,
+                'batch_id': batch_id,
+                'student_id': student_id,
+                'mentor_feedback': progress_review.mentor_feedback,
+                'student_feedback': progress_review.student_feedback,
+            }, status=status.HTTP_200_OK)
+            
+        except Batch.DoesNotExist:
+            return Response({
+                'error': 'Batch not found'
+            }, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class BatchStudentsWeeklyListView(APIView):
+    """
+    Get all students in a batch for weekly review selection
+    """
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request, batch_id):
+        try:
+            mentor = request.user
+            
+            # Verify mentor access
+            batch = Batch.objects.get(id=batch_id, mentor=mentor)
+            
+            # Get all approved students
+            students = batch.students.filter(is_approved=True).values(
+                'id', 'first_name', 'last_name', 'username', 'email'
+            )
+            
+            students_list = [
+                {
+                    'id': s['id'],
+                    'name': f"{s['first_name']} {s['last_name']}",
+                    'username': s['username'],
+                    'email': s['email'],
+                }
+                for s in students
+            ]
+            
+            return Response({
+                'batch_id': batch.id,
+                'batch_name': batch.name,
+                'course_name': batch.course.name,
+                'students': students_list,
+            }, status=status.HTTP_200_OK)
+            
+        except Batch.DoesNotExist:
+            return Response({
+                'error': 'Batch not found'
+            }, status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentWeeklyReviewView(APIView):
+    """
+    GET: Student can view their weekly feedback
+    Fetches feedback for a specific week without needing batch_id
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, week_number):
+        try:
+            student = request.user
+            
+            print(f"🔍 Student {student.username} fetching week {week_number} feedback")
+            
+      
+            from courses.models import Batch 
+            
+            student_batch = Batch.objects.filter(students=student).first()
+            
+            if not student_batch:
+                print(f"⚠️ Student {student.username} not enrolled in any batch")
+                return Response({
+                    'id': None,
+                    'batch': None,
+                    'week_number': week_number,
+                    'student_feedback': '',
+                    'mentor_feedback': '',
+                    'reviewed_at': None,
+                    'reviewed_by': None,
+                    'message': 'You are not enrolled in any batch'
+                }, status=status.HTTP_200_OK)
+            
+            batch = student_batch
+            print(f"✅ Found batch: {batch.name}")
+            
+            # ✅ Try to get progress review for this week
+            try:
+                progress_review = StudentProgressReview.objects.get(
+                    batch=batch,
+                    student=student,
+                    week_number=week_number
+                )
+                
+                print(f"✅ Week {week_number} review found for {student.username}")
+                
+                review_data = {
+                    'id': progress_review.id,
+                    'batch': {
+                        'id': batch.id,
+                        'name': batch.name,
+                    },
+                    'week_number': week_number,
+                    'student_feedback': progress_review.student_feedback or '',
+                    'mentor_feedback': progress_review.mentor_feedback or '',
+                    'reviewed_at': progress_review.reviewed_at,
+                    'reviewed_by': {
+                        'name': f"{progress_review.reviewed_by.first_name} {progress_review.reviewed_by.last_name}",
+                        'username': progress_review.reviewed_by.username,
+                    } if progress_review.reviewed_by else None,
+                }
+                
+                return Response(review_data, status=status.HTTP_200_OK)
+                
+            except StudentProgressReview.DoesNotExist:
+                print(f"⚠️ Week {week_number} review not found for {student.username}")
+                
+                # ✅ Return empty feedback (no error)
+                return Response({
+                    'id': None,
+                    'batch': {
+                        'id': batch.id,
+                        'name': batch.name,
+                    },
+                    'week_number': week_number,
+                    'student_feedback': '',
+                    'mentor_feedback': '',
+                    'reviewed_at': None,
+                    'reviewed_by': None,
+                    'message': 'No feedback for this week yet'
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            print(f"❌ Error in StudentWeeklyReviewView: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({
+                'error': f'Error fetching feedback: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+class MentorAllReviewsView(APIView):
+    """Get all reviews created by the mentor"""
+    permission_classes = [permissions.IsAuthenticated, IsMentor]
+    
+    def get(self, request):
+        try:
+            mentor = request.user
+            
+            # Get all reviews where this mentor is the reviewer
+            reviews = StudentProgressReview.objects.filter(
+                reviewed_by=mentor
+            ).select_related('student', 'batch', 'reviewed_by')
+            
+            reviews_data = []
+            for review in reviews:
+                reviews_data.append({
+                    'id': review.id,
+                    'student_name': f"{review.student.first_name} {review.student.last_name}",
+                    'student_username': review.student.username,
+                    'student_email': review.student.email,
+                    'batch_name': review.batch.name,
+                    'week_number': review.week_number,
+                    'mentor_feedback': review.mentor_feedback or '',
+                    'student_feedback': review.student_feedback or '',
+                    'reviewed_at': review.reviewed_at.isoformat() if review.reviewed_at else None,
+                })
+            
+            # Sort by most recent first
+            reviews_data.sort(key=lambda x: x['reviewed_at'], reverse=True)
+            
+            return Response({
+                'reviews': reviews_data,
+                'count': len(reviews_data)
+            }, status=status.HTTP_200_OK)
+        
+        except Exception as e:
+            return Response({
+                'error': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
