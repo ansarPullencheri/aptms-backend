@@ -12,14 +12,14 @@ from .permissions import IsStudent
 class StudentDashboardView(APIView):
     """
     Main dashboard view for students showing overview of their academic status.
-    ✅ Includes course_id for syllabus download
+    Includes course_id for syllabus download
     """
     permission_classes = [permissions.IsAuthenticated, IsStudent]
     
     def get(self, request):
         student = request.user
         
-        # ✅ Get enrolled batches with course_id
+        #  Get enrolled batches with course_id
         enrolled_batches = student.enrolled_batches.select_related('course', 'mentor')
         
         # Get task statistics
@@ -60,7 +60,7 @@ class StudentDashboardView(APIView):
                 {
                     'id': batch.id,
                     'name': batch.name,
-                    'course_id': batch.course.id,  # ✅ Added course_id for syllabus download
+                    'course_id': batch.course.id,  #  course_id for syllabus download
                     'course_name': batch.course.name,
                     'mentor_name': f"{batch.mentor.first_name} {batch.mentor.last_name}" if batch.mentor else None,
                     'start_date': batch.start_date,
@@ -505,7 +505,7 @@ class StudentSubmitTaskView(APIView):
                 submission_file=submission_file,
             )
             
-            # ✅ SEND NOTIFICATION (if notifications app exists)
+            #  SEND NOTIFICATION (if notifications app exists)
             try:
                 from notifications.utils import notify_on_task_submission
                 print(f"\n🔔 CALLING NOTIFICATION FUNCTION")

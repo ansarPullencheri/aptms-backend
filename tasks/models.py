@@ -18,7 +18,7 @@ class Task(models.Model):
     task_type = models.CharField(max_length=20, choices=[('course', 'Course-wide'), ('batch', 'Batch-specific')], default='batch')
     task_order = models.IntegerField(default=0)
     
-    # ✅ Weekly scheduling fields
+    # Weekly scheduling fields
     week_number = models.IntegerField(default=1, help_text="Week number in the course (1, 2, 3, etc.)")
     release_date = models.DateTimeField(null=True, blank=True, help_text="Date when task becomes available to students")
     is_scheduled = models.BooleanField(default=False, help_text="Is this a scheduled task?")
@@ -39,7 +39,7 @@ class Task(models.Model):
 
 
 class TaskSubmission(models.Model):
-    # ✅ Status choices for submissions
+    #  Status choices for submissions
     STATUS_CHOICES = [
         ('submitted', 'Submitted'),
         ('graded', 'Graded'),
@@ -48,14 +48,14 @@ class TaskSubmission(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='submissions')
     student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='task_submissions')
     submission_file = models.FileField(upload_to='task_submissions/', blank=True, null=True)
-    submission_text = models.TextField(blank=True, null=True)  # ✅ Changed to null=True
+    submission_text = models.TextField(blank=True, null=True)  
     submitted_at = models.DateTimeField(auto_now_add=True)
-    marks_obtained = models.FloatField(blank=True, null=True)  # ✅ Changed to FloatField for decimal marks
-    feedback = models.TextField(blank=True, null=True)  # ✅ Added null=True
+    marks_obtained = models.FloatField(blank=True, null=True)  #Changed to FloatField for decimal marks
+    feedback = models.TextField(blank=True, null=True)  # Added null=True
     graded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='graded_submissions')
     graded_at = models.DateTimeField(blank=True, null=True)
-    status = models.CharField(  # ✅ ADDED THIS FIELD
+    status = models.CharField(  #  ADDED THIS FIELD
         max_length=20, 
         default='submitted', 
         choices=STATUS_CHOICES,

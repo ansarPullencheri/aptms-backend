@@ -38,7 +38,7 @@ urlpatterns = [
     path('student/<int:student_id>/submitted/', views.StudentSubmittedTasksView.as_view(), name='student-submitted-tasks'),
     path('student/<int:student_id>/assigned/', views.StudentAssignedTasksView.as_view(), name='student-assigned-tasks'),
     
-    # ===== Weekly Progress Review URLs ===== ✅ CORRECTED
+    # ===== Weekly Progress Review URLs =====
     # GET: Load existing review | POST: Save review (same endpoint)
     path('mentor/weekly-review/<int:batch_id>/<int:student_id>/<int:week_number>/', 
          views.MentorWeeklyReviewView.as_view(), 

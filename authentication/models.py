@@ -31,20 +31,48 @@ class User(AbstractUser):
 
 
 
+# class StudentProfile(models.Model):
+#     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
+#     enrollment_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
+#     date_of_birth = models.DateField(blank=True, null=True)
+#     address = models.TextField(blank=True, null=True)
+#     guardian_name = models.CharField(max_length=100, blank=True, null=True)
+#     guardian_phone = models.CharField(max_length=15, blank=True, null=True)
+    
+#     def __str__(self):
+#         return f"{self.user.username} - Student Profile"
+    
+#     class Meta:
+#         verbose_name = 'Student Profile'
+#         verbose_name_plural = 'Student Profiles'
+
 class StudentProfile(models.Model):
+    GENDER_CHOICES = [
+        ('male', 'Male'),
+        ('female', 'Female'),
+        ('other', 'Other'),
+    ]
+
+    BLOOD_GROUP_CHOICES = [
+        ('A+', 'A+'), ('A-', 'A-'),
+        ('B+', 'B+'), ('B-', 'B-'),
+        ('O+', 'O+'), ('O-', 'O-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='student_profile')
     enrollment_number = models.CharField(max_length=50, unique=True, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     guardian_name = models.CharField(max_length=100, blank=True, null=True)
     guardian_phone = models.CharField(max_length=15, blank=True, null=True)
+
     
+    gender = models.CharField(max_length=10, choices=GENDER_CHOICES, blank=True, null=True)
+    blood_group = models.CharField(max_length=5, choices=BLOOD_GROUP_CHOICES, blank=True, null=True)
+    photo = models.ImageField(upload_to="student_photos/", blank=True, null=True)
     def __str__(self):
         return f"{self.user.username} - Student Profile"
-    
-    class Meta:
-        verbose_name = 'Student Profile'
-        verbose_name_plural = 'Student Profiles'
 
 
 class MentorProfile(models.Model):

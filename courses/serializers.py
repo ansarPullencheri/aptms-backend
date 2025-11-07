@@ -6,13 +6,13 @@ from authentication.serializers import UserSerializer
 class CourseSerializer(serializers.ModelSerializer):
     mentor = UserSerializer(read_only=True)
     mentor_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-    syllabus = serializers.FileField(required=False, allow_null=True)  # ✅ Add this
+    syllabus = serializers.FileField(required=False, allow_null=True)  
     
     class Meta:
         model = Course
         fields = [
             'id', 'name', 'code', 'description', 'duration_weeks',
-            'syllabus', 'mentor', 'mentor_id', 'is_active',  # ✅ Include syllabus
+            'syllabus', 'mentor', 'mentor_id', 'is_active',  
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

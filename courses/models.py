@@ -7,11 +7,11 @@ class Course(models.Model):
     code = models.CharField(max_length=50, unique=True)
     description = models.TextField()
     duration_weeks = models.IntegerField()
-    syllabus = models.FileField(upload_to='syllabi/', blank=True, null=True)  # ✅ This is correct
+    syllabus = models.FileField(upload_to='syllabi/', blank=True, null=True)  
     mentor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, 
                                related_name='courses_teaching', limit_choices_to={'role': 'mentor'})
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='courses_created', 
-                                  null=True, blank=True)  # ✅ Added null=True, blank=True
+                                  null=True, blank=True) 
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -68,7 +68,7 @@ class TaskSerializer(serializers.ModelSerializer):
         # Create task
         task = Task.objects.create(**validated_data)
         
-        # ✅ CRITICAL FIX: Handle task assignment based on task_type
+        #  CRITICAL FIX: Handle task assignment based on task_type
         if validated_data.get('task_type') == 'course':
             # Course-wide task: assign to ALL approved students in ALL batches of this course
             batches = course.batches.all()
@@ -78,7 +78,7 @@ class TaskSerializer(serializers.ModelSerializer):
                 enrolled_batches__in=batches
             ).distinct()
             task.assigned_to.set(all_students)
-            print(f"✅ Course-wide task '{task.title}': Assigned to {all_students.count()} students")
+            print(f" Course-wide task '{task.title}': Assigned to {all_students.count()} students")
             print(f"   Students: {[s.username for s in all_students]}")
         else:
             # Batch-specific task
@@ -90,20 +90,20 @@ class TaskSerializer(serializers.ModelSerializer):
                     is_approved=True
                 )
                 task.assigned_to.set(students)
-                print(f"✅ Batch task '{task.title}': Assigned to {students.count()} specific students")
+                print(f" Batch task '{task.title}': Assigned to {students.count()} specific students")
                 print(f"   Students: {[s.username for s in students]}")
             elif batch:
                 # No specific students: assign to ALL approved students in batch
                 students = batch.students.filter(is_approved=True)
                 task.assigned_to.set(students)
-                print(f"✅ Batch task '{task.title}': Assigned to {students.count()} students in batch '{batch.name}'")
+                print(f" Batch task '{task.title}': Assigned to {students.count()} students in batch '{batch.name}'")
                 print(f"   Students: {[s.username for s in students]}")
             else:
                 print(f"⚠️ WARNING: Task '{task.title}' created but no students assigned!")
         
-        # ✅ Final verification
+        #  Final verification
         final_count = task.assigned_to.count()
-        print(f"✅ TASK CREATION COMPLETE: '{task.title}' has {final_count} assigned students")
+        print(f" TASK CREATION COMPLETE: '{task.title}' has {final_count} assigned students")
         
         return task
 

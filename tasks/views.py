@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.db.models import Q, Count, Prefetch
 from django.utils import timezone
-from .models import Task, TaskSubmission, StudentProgressReview  # ✅ ADD StudentProgressReview
+from .models import Task, TaskSubmission, StudentProgressReview  
 from .serializers import (
     TaskSerializer, 
     TaskSubmissionSerializer, 
@@ -130,7 +130,7 @@ class TaskCreateView(generics.CreateAPIView):
             serializer.is_valid(raise_exception=True)
             task = serializer.save(created_by=request.user)
             
-            # ✅ SEND NOTIFICATION TO STUDENTS AND MENTOR
+            #  SEND NOTIFICATION TO STUDENTS AND MENTOR
             notify_on_task_created(task, request.user)
             
             # Get count of assigned students
@@ -217,7 +217,7 @@ class TaskSubmissionView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         submission = serializer.save(student=request.user, task=task)
         
-        # ✅ SEND NOTIFICATION TO MENTOR AND ADMIN
+        # SEND NOTIFICATION TO MENTOR AND ADMIN
         notify_on_task_submission(task, request.user, submission)
         
         return Response(
@@ -259,7 +259,7 @@ class GradeSubmissionView(generics.UpdateAPIView):
     def perform_update(self, serializer):
         submission = serializer.save(graded_by=self.request.user)
         
-        # ✅ SEND NOTIFICATION TO STUDENT
+        # SEND NOTIFICATION TO STUDENT
         notify_on_task_graded(submission, self.request.user)
 
 
@@ -583,7 +583,7 @@ class MentorGradeSubmissionView(APIView):
             submission.status = 'graded'
             submission.save()
             
-            # ✅ Send notification to student
+            #  Send notification to student
             notify_on_task_graded(submission, mentor)
             
             return Response({
@@ -700,7 +700,7 @@ class MentorCreateTaskView(APIView):
                 students = batch.students.filter(is_approved=True)
                 task.assigned_to.set(students)
             
-            # ✅ SEND NOTIFICATION TO STUDENTS AND ADMIN
+            #  SEND NOTIFICATION TO STUDENTS AND ADMIN
             notify_on_task_created(task, request.user)
             
             return Response({
@@ -872,7 +872,7 @@ class StudentSubmitTaskView(APIView):
                 status='submitted'
             )
             
-            # ✅ SEND NOTIFICATION TO MENTOR AND ADMIN
+            #  SEND NOTIFICATION TO MENTOR AND ADMIN
             notify_on_task_submission(task, request.user, submission)
             
             return Response({
@@ -1139,7 +1139,7 @@ class StudentWeeklyReviewView(APIView):
         try:
             student = request.user
             
-            print(f"🔍 Student {student.username} fetching week {week_number} feedback")
+            print(f" Student {student.username} fetching week {week_number} feedback")
             
       
             from courses.models import Batch 
@@ -1160,9 +1160,9 @@ class StudentWeeklyReviewView(APIView):
                 }, status=status.HTTP_200_OK)
             
             batch = student_batch
-            print(f"✅ Found batch: {batch.name}")
+            print(f"Found batch: {batch.name}")
             
-            # ✅ Try to get progress review for this week
+            #  Try to get progress review for this week
             try:
                 progress_review = StudentProgressReview.objects.get(
                     batch=batch,
@@ -1170,7 +1170,7 @@ class StudentWeeklyReviewView(APIView):
                     week_number=week_number
                 )
                 
-                print(f"✅ Week {week_number} review found for {student.username}")
+                print(f" Week {week_number} review found for {student.username}")
                 
                 review_data = {
                     'id': progress_review.id,
@@ -1193,7 +1193,7 @@ class StudentWeeklyReviewView(APIView):
             except StudentProgressReview.DoesNotExist:
                 print(f"⚠️ Week {week_number} review not found for {student.username}")
                 
-                # ✅ Return empty feedback (no error)
+                # Return empty feedback (no error)
                 return Response({
                     'id': None,
                     'batch': {
@@ -1209,7 +1209,7 @@ class StudentWeeklyReviewView(APIView):
                 }, status=status.HTTP_200_OK)
                 
         except Exception as e:
-            print(f"❌ Error in StudentWeeklyReviewView: {str(e)}")
+            print(f" Error in StudentWeeklyReviewView: {str(e)}")
             import traceback
             traceback.print_exc()
             return Response({

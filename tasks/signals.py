@@ -35,4 +35,4 @@ def assign_existing_tasks_to_new_student(sender, instance, action, pk_set, **kwa
                     task.assigned_to.add(student)
       
             if all_tasks.exists():
-                print(f"✅ AUTO-ASSIGNED {all_tasks.count()} tasks to {new_students.count()} new student(s) in batch '{batch.name}'")
+                print(f" AUTO-ASSIGNED {all_tasks.count()} tasks to {new_students.count()} new student(s) in batch '{batch.name}'")

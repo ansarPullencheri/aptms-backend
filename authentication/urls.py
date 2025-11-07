@@ -22,10 +22,27 @@ from .student_views import (
     StudentSubmitTaskView,
 )
 
+
+
+
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
+from .views import ExportStudentsToGoogleSheetView
+
+
+from .views import ForgotPasswordView, ResetPasswordView
 urlpatterns = [
     # ===== Authentication URLs =====
     path('register/', StudentRegistrationView.as_view(), name='student-register'),
     path('login/', LoginView.as_view(), name='login'),
+    
+    
+    path('forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),
+    # path('reset-password/<uidb64>/<token>/', ResetPasswordView.as_view(), name='reset-password'),
+    path('reset-password/', ResetPasswordView.as_view(), name='reset-password'),
     
     # ===== Admin User Management URLs =====
     path('pending-students/', PendingStudentsView.as_view(), name='pending-students'),
@@ -52,4 +69,9 @@ urlpatterns = [
     # ===== Admin Password Management URLs =====
     path('admin/reset-password/', AdminResetPasswordView.as_view(), name='admin-reset-password'),
     path('admin/generate-password/', AdminGeneratePasswordView.as_view(), name='admin-generate-password'),
+    
+    path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    path('export-to-sheet/', ExportStudentsToGoogleSheetView.as_view(), name='export_to_sheet'),
 ]

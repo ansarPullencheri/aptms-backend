@@ -1,7 +1,7 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.parsers import MultiPartParser, FormParser  # ✅ Add these
+from rest_framework.parsers import MultiPartParser, FormParser  
 from django.db.models import Q, Prefetch
 from .models import Course, Batch
 from .serializers import CourseSerializer, BatchSerializer, BatchDetailSerializer
@@ -31,7 +31,7 @@ class CourseCreateView(generics.CreateAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)  # ✅ Add this for file upload
+    parser_classes = (MultiPartParser, FormParser)  
     
     def perform_create(self, serializer):
         if self.request.user.role != 'admin':
@@ -43,7 +43,7 @@ class CourseUpdateView(generics.UpdateAPIView):
     queryset = Course.objects.all()
     serializer_class = CourseSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = (MultiPartParser, FormParser)  # ✅ Add this for file upload
+    parser_classes = (MultiPartParser, FormParser) 
     
     def perform_update(self, serializer):
         if self.request.user.role != 'admin':
@@ -60,7 +60,7 @@ class CourseDeleteView(generics.DestroyAPIView):
         if self.request.user.role != 'admin':
             raise permissions.PermissionDenied("Only admins can delete courses")
         
-        # ✅ Delete syllabus file if exists
+        # Delete syllabus file if exists
         if instance.syllabus:
             if os.path.isfile(instance.syllabus.path):
                 os.remove(instance.syllabus.path)
@@ -107,7 +107,7 @@ class AssignMentorView(APIView):
             )
 
 
-# ✅ Download Syllabus View
+#  Download Syllabus View
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def download_syllabus(request, pk):

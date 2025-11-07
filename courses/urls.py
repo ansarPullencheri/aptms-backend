@@ -10,7 +10,7 @@ urlpatterns = [
     path('<int:pk>/delete/', views.CourseDeleteView.as_view(), name='course-delete'),
     path('<int:pk>/assign-mentor/', views.AssignMentorView.as_view(), name='assign-mentor'),
     
-    # ✅ Download syllabus (moved up for better organization)
+    #  Download syllabus (moved up for better organization)
     path('<int:pk>/download-syllabus/', views.download_syllabus, name='download-syllabus'),
     
     # ===== Batch URLs =====
